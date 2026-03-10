@@ -2,10 +2,13 @@ package us.packden.brightnesswidget
 
 import android.content.Context
 import android.provider.Settings
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
+import androidx.glance.state.PreferencesGlanceStateDefinition
 
 val brightnessStepKey = ActionParameters.Key<Int>("brightness_step")
 
@@ -29,14 +32,22 @@ class SetBrightnessAction : ActionCallback {
             Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
         )
 
-        // Set the brightness
+        // Set the system brightness
         Settings.System.putInt(
             context.contentResolver,
             Settings.System.SCREEN_BRIGHTNESS,
             brightnessValue
         )
 
-        // Refresh all instances of this widget
+        // Write the new value into Glance state so the widget re-renders
+        // immediately with the correct filled/unfilled segments
+        updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
+            prefs.toMutablePreferences().apply {
+                this[intPreferencesKey("brightness_value")] = brightnessValue
+            }
+        }
+
+        // Trigger a re-render of all widget instances
         BrightnessWidget().updateAll(context)
     }
 }

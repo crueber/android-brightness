@@ -1,8 +1,6 @@
 package us.packden.brightnesswidget
 
 import android.content.Context
-import android.provider.Settings
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
@@ -18,33 +16,19 @@ class SetBrightnessAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        val step = parameters[brightnessStepKey] ?: return
+        val step  = parameters[brightnessStepKey] ?: return
         val steps = BrightnessConfig.BRIGHTNESS_STEPS
-        val range = getBrightnessRange(context)
 
-        // Map the tapped step to the device's actual brightness range
-        val brightnessValue = stepToRawBrightness(step, steps, range)
+        // Convert the tapped step to a 0.0–1.0 fraction and write to system
+        val fraction = stepToFraction(step, steps)
+        writeBrightnessFraction(context, fraction)
 
-        // Disable auto-brightness so the manual value sticks
-        Settings.System.putInt(
-            context.contentResolver,
-            Settings.System.SCREEN_BRIGHTNESS_MODE,
-            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
-        )
-
-        // Set the system brightness
-        Settings.System.putInt(
-            context.contentResolver,
-            Settings.System.SCREEN_BRIGHTNESS,
-            brightnessValue
-        )
-
-        // Store both the raw value and the exact step that was tapped.
-        // Storing the step directly avoids any rounding error on the display side.
+        // Store fraction and exact tapped step in Glance state.
+        // Storing the step directly avoids any rounding error on re-render.
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
             prefs.toMutablePreferences().apply {
-                this[intPreferencesKey("brightness_value")] = brightnessValue
-                this[intPreferencesKey("brightness_active_step")] = step
+                this[brightnessFractionKey]   = fraction
+                this[brightnessActiveStepKey] = step
             }
         }
 

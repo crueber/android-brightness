@@ -5,10 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
@@ -23,9 +23,6 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = BrightnessWidget()
 
     private val coroutineScope = MainScope()
-
-    // ContentObserver that fires whenever SCREEN_BRIGHTNESS changes externally
-    // (pull-down slider, Settings app, etc.)
     private var brightnessObserver: ContentObserver? = null
 
     override fun onEnabled(context: Context) {
@@ -44,22 +41,19 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
         appWidgetIds: IntArray
     ) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
-        // Re-register observer on each update broadcast (covers device reboot)
         registerBrightnessObserver(context)
-        // Sync current system brightness into state on every update
         syncBrightnessState(context)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        // Also sync on any broadcast (covers edge cases like widget restore)
         if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             syncBrightnessState(context)
         }
     }
 
     private fun registerBrightnessObserver(context: Context) {
-        if (brightnessObserver != null) return  // already registered
+        if (brightnessObserver != null) return
 
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
@@ -67,10 +61,20 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
             }
         }
 
-        context.contentResolver.registerContentObserver(
+        val cr = context.contentResolver
+
+        // Observe the float setting on API 26+ (authoritative on modern devices)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            cr.registerContentObserver(
+                Settings.System.getUriFor("screen_brightness_float"),
+                false, observer
+            )
+        }
+
+        // Always observe the legacy integer setting too (older devices + fallback)
+        cr.registerContentObserver(
             Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS),
-            /* notifyForDescendants = */ false,
-            observer
+            false, observer
         )
 
         brightnessObserver = observer
@@ -83,25 +87,18 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
         }
     }
 
-    /**
-     * Read the current system brightness and push it into Glance state for
-     * every widget instance, then trigger a re-render.
-     * Converts the raw value to the nearest step using the device's actual
-     * range so the bar always reflects the correct number of filled segments.
-     */
     private fun syncBrightnessState(context: Context) {
-        val range = getBrightnessRange(context)
-        val newBrightness = readSystemBrightness(context)
-        val steps = BrightnessConfig.BRIGHTNESS_STEPS
-        val activeStep = rawBrightnessToStep(newBrightness, steps, range)
+        val fraction  = readBrightnessFraction(context)
+        val steps     = BrightnessConfig.BRIGHTNESS_STEPS
+        val activeStep = fractionToStep(fraction, steps)
         coroutineScope.launch {
             val glanceIds = GlanceAppWidgetManager(context)
                 .getGlanceIds(BrightnessWidget::class.java)
             for (id in glanceIds) {
                 updateAppWidgetState(context, PreferencesGlanceStateDefinition, id) { prefs ->
                     prefs.toMutablePreferences().apply {
-                        this[intPreferencesKey("brightness_value")] = newBrightness
-                        this[intPreferencesKey("brightness_active_step")] = activeStep
+                        this[brightnessFractionKey]   = fraction
+                        this[brightnessActiveStepKey] = activeStep
                     }
                 }
             }

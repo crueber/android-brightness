@@ -1,12 +1,13 @@
 package us.packden.brightnesswidget
 
 import android.content.Context
-import android.os.PowerManager
+import android.os.Build
 import android.provider.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
@@ -33,65 +34,91 @@ import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.unit.ColorProvider
 import kotlin.math.roundToInt
 
-// Key used to store the current raw brightness value in Glance state
-val brightnessValueKey = intPreferencesKey("brightness_value")
+/**
+ * Brightness fraction stored in Glance state: 0.0 = minimum, 1.0 = maximum.
+ * Using a float fraction is device-agnostic — no need to know the integer range.
+ * Key name is "brightness_fraction" (distinct from the old "brightness_value" Int
+ * key) to avoid a type mismatch crash on devices that have the old state stored.
+ */
+val brightnessFractionKey = floatPreferencesKey("brightness_fraction")
 
 /**
- * The device's actual brightness range, read from PowerManager at runtime.
- * Manufacturers use different ranges — commonly 1–100 or 1–255.
- * Falls back to 1–255 if PowerManager returns nonsensical values.
+ * Active step (1..BRIGHTNESS_STEPS) stored in Glance state.
+ * Written by SetBrightnessAction (exact tapped step) and syncBrightnessState
+ * (derived from the current fraction). BrightnessBar reads this directly.
  */
-data class BrightnessRange(val min: Int, val max: Int)
+val brightnessActiveStepKey = intPreferencesKey("brightness_active_step")
 
-fun getBrightnessRange(context: Context): BrightnessRange {
-    // minimumScreenBrightnessSetting and maximumScreenBrightnessSetting are
-    // hidden APIs not in the public SDK. Access via reflection with a safe fallback.
+// ─── System brightness read/write ────────────────────────────────────────────
+
+/**
+ * Read the current brightness as a fraction 0.0–1.0.
+ *
+ * On API 26+ devices (including Pixel 9 emulator) the float setting
+ * SCREEN_BRIGHTNESS_FLOAT is the authoritative value. The legacy integer
+ * SCREEN_BRIGHTNESS is a compatibility stub on modern devices and does not
+ * reliably reflect what the display is actually doing.
+ *
+ * Falls back to the integer setting on older devices.
+ */
+fun readBrightnessFraction(context: Context): Float {
+    // Try float setting first (API 26+, authoritative on modern devices)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        try {
+            val f = Settings.System.getFloat(
+                context.contentResolver,
+                "screen_brightness_float"
+            )
+            if (f in 0f..1f) return f
+        } catch (_: Settings.SettingNotFoundException) { }
+    }
+    // Fall back to integer setting, normalised against 255
     return try {
-        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val min = PowerManager::class.java
-            .getMethod("getMinimumScreenBrightnessSetting")
-            .invoke(pm) as Int
-        val max = PowerManager::class.java
-            .getMethod("getMaximumScreenBrightnessSetting")
-            .invoke(pm) as Int
-        if (max > min && min >= 0) BrightnessRange(min.coerceAtLeast(1), max)
-        else BrightnessRange(1, 255)
-    } catch (e: Exception) {
-        BrightnessRange(1, 255)
+        val raw = Settings.System.getInt(
+            context.contentResolver,
+            Settings.System.SCREEN_BRIGHTNESS
+        )
+        (raw / 255f).coerceIn(0f, 1f)
+    } catch (_: Settings.SettingNotFoundException) {
+        0.5f
     }
 }
 
 /**
- * Map a step number (1..BRIGHTNESS_STEPS) to a raw brightness value
- * within the device's actual range.
- *   step 1          → range.min  (minimum brightness)
- *   step STEPS      → range.max  (maximum brightness)
+ * Write a brightness fraction 0.0–1.0 to the system.
+ *
+ * Writes SCREEN_BRIGHTNESS_FLOAT on API 26+ (what modern devices actually use)
+ * and also writes the legacy integer for compatibility.
  */
-fun stepToRawBrightness(step: Int, steps: Int, range: BrightnessRange): Int {
-    val fraction = (step - 1).toFloat() / (steps - 1)
-    return (range.min + fraction * (range.max - range.min)).roundToInt()
-        .coerceIn(range.min, range.max)
-}
+fun writeBrightnessFraction(context: Context, fraction: Float) {
+    val cr = context.contentResolver
+    val clamped = fraction.coerceIn(0f, 1f)
 
-/**
- * Map a raw brightness value back to the nearest step (1..BRIGHTNESS_STEPS).
- * Inverse of stepToRawBrightness.
- */
-fun rawBrightnessToStep(raw: Int, steps: Int, range: BrightnessRange): Int {
-    val fraction = (raw - range.min).toFloat() / (range.max - range.min)
-    return (fraction * (steps - 1)).roundToInt() + 1
-}
+    // Disable auto-brightness so the manual value sticks
+    Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE,
+        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
 
-/** Read the current raw system brightness, clamped to the device's range. */
-fun readSystemBrightness(context: Context): Int {
-    val range = getBrightnessRange(context)
-    return try {
-        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-            .coerceIn(range.min, range.max)
-    } catch (e: Settings.SettingNotFoundException) {
-        (range.min + range.max) / 2
+    // Write float setting on API 26+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Settings.System.putFloat(cr, "screen_brightness_float", clamped)
     }
+
+    // Always write the legacy integer too (needed on older devices, harmless on new ones)
+    val intValue = (clamped * 255).roundToInt().coerceIn(1, 255)
+    Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, intValue)
 }
+
+// ─── Step ↔ fraction conversion ──────────────────────────────────────────────
+
+/** Map step 1..N to fraction 0.0–1.0. Step 1 = 0.0, step N = 1.0. */
+fun stepToFraction(step: Int, steps: Int): Float =
+    ((step - 1).toFloat() / (steps - 1)).coerceIn(0f, 1f)
+
+/** Map fraction 0.0–1.0 to the nearest step 1..N. */
+fun fractionToStep(fraction: Float, steps: Int): Int =
+    (fraction * (steps - 1)).roundToInt() + 1
+
+// ─── Widget ───────────────────────────────────────────────────────────────────
 
 class BrightnessWidget : GlanceAppWidget() {
 
@@ -99,16 +126,13 @@ class BrightnessWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Seed state with current system brightness on first load
-        val range = getBrightnessRange(context)
-        val currentBrightness = readSystemBrightness(context)
         val steps = BrightnessConfig.BRIGHTNESS_STEPS
+        val fraction = readBrightnessFraction(context)
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, id) { prefs ->
             prefs.toMutablePreferences().apply {
-                if (this[brightnessValueKey] == null) {
-                    this[brightnessValueKey] = currentBrightness
-                    this[brightnessActiveStepKey] = rawBrightnessToStep(currentBrightness, steps, range)
-                }
+                // Always refresh on load so the widget reflects current brightness
+                this[brightnessFractionKey] = fraction
+                this[brightnessActiveStepKey] = fractionToStep(fraction, steps)
             }
         }
 
@@ -120,25 +144,21 @@ class BrightnessWidget : GlanceAppWidget() {
     }
 }
 
-// Filled segment color
-private val colorFilled = Color(0xFFFFFFFF)
-// Unfilled segment color — also used as the divider and outer background
+// ─── UI ───────────────────────────────────────────────────────────────────────
+
+private val colorFilled   = Color(0xFFFFFFFF)
 private val colorUnfilled = Color(0xFF333333)
 
 @Composable
 fun BrightnessBar() {
-    val steps = BrightnessConfig.BRIGHTNESS_STEPS
-    val heightDp = BrightnessConfig.SEGMENT_HEIGHT_DP
-    val cornerDp = BrightnessConfig.CORNER_RADIUS_DP
+    val steps     = BrightnessConfig.BRIGHTNESS_STEPS
+    val heightDp  = BrightnessConfig.SEGMENT_HEIGHT_DP
+    val cornerDp  = BrightnessConfig.CORNER_RADIUS_DP
     val dividerDp = BrightnessConfig.DIVIDER_WIDTH_DP
 
-    val prefs = currentState<Preferences>()
+    val prefs      = currentState<Preferences>()
     val activeStep = prefs[brightnessActiveStepKey]?.coerceIn(1, steps) ?: 1
 
-    // Outer box: rounded corners + unfilled background color.
-    // Because the outer background matches the divider and unfilled segment
-    // color, the rounded corners naturally mask the inner content — the bar
-    // looks like one unified rounded rectangle with hairline dividers inside.
     Box(
         modifier = GlanceModifier
             .fillMaxWidth()
@@ -147,15 +167,10 @@ fun BrightnessBar() {
             .background(ColorProvider(colorUnfilled))
     ) {
         Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .fillMaxHeight(),
+            modifier = GlanceModifier.fillMaxWidth().fillMaxHeight(),
             horizontalAlignment = Alignment.Horizontal.Start
         ) {
             for (step in 1..steps) {
-                val isFilled = step <= activeStep
-
-                // 1dp divider before every segment except the first
                 if (step > 1) {
                     Box(
                         modifier = GlanceModifier
@@ -164,15 +179,13 @@ fun BrightnessBar() {
                             .background(ColorProvider(colorUnfilled))
                     ) {}
                 }
-
-                // Segment — no individual corner radius, no padding
                 Box(
                     modifier = GlanceModifier
                         .defaultWeight()
                         .fillMaxHeight()
-                        .background(
-                            ColorProvider(if (isFilled) colorFilled else colorUnfilled)
-                        )
+                        .background(ColorProvider(
+                            if (step <= activeStep) colorFilled else colorUnfilled
+                        ))
                         .clickable(
                             actionRunCallback<SetBrightnessAction>(
                                 actionParametersOf(brightnessStepKey to step)
@@ -183,7 +196,3 @@ fun BrightnessBar() {
         }
     }
 }
-
-// Stores the active step (1..BRIGHTNESS_STEPS) so BrightnessBar never has to
-// call getBrightnessRange() — that's done once in the action/observer path.
-val brightnessActiveStepKey = intPreferencesKey("brightness_active_step")

@@ -27,7 +27,7 @@ import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
-import androidx.glance.layout.padding
+import androidx.glance.layout.width
 import androidx.glance.state.GlanceStateDefinition
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.unit.ColorProvider
@@ -120,47 +120,66 @@ class BrightnessWidget : GlanceAppWidget() {
     }
 }
 
+// Filled segment color
+private val colorFilled = Color(0xFFFFFFFF)
+// Unfilled segment color — also used as the divider and outer background
+private val colorUnfilled = Color(0xFF333333)
+
 @Composable
 fun BrightnessBar() {
     val steps = BrightnessConfig.BRIGHTNESS_STEPS
-    val gapDp = BrightnessConfig.SEGMENT_GAP_DP
     val heightDp = BrightnessConfig.SEGMENT_HEIGHT_DP
+    val cornerDp = BrightnessConfig.CORNER_RADIUS_DP
+    val dividerDp = BrightnessConfig.DIVIDER_WIDTH_DP
 
-    // Raw brightness value stored in Glance state (in the device's native range)
     val prefs = currentState<Preferences>()
-    val rawBrightness = prefs[brightnessValueKey] ?: -1
-
-    // brightnessActiveStepKey is written by both SetBrightnessAction (exact step)
-    // and syncBrightnessState (converted from raw using the device range).
-    // Fallback: if somehow only rawBrightness is present, show 1 segment.
     val activeStep = prefs[brightnessActiveStepKey]?.coerceIn(1, steps) ?: 1
 
-    Row(
+    // Outer box: rounded corners + unfilled background color.
+    // Because the outer background matches the divider and unfilled segment
+    // color, the rounded corners naturally mask the inner content — the bar
+    // looks like one unified rounded rectangle with hairline dividers inside.
+    Box(
         modifier = GlanceModifier
             .fillMaxWidth()
             .height(heightDp.dp)
-            .padding(4.dp),
-        horizontalAlignment = Alignment.Horizontal.Start
+            .cornerRadius(cornerDp.dp)
+            .background(ColorProvider(colorUnfilled))
     ) {
-        for (step in 1..steps) {
-            val isFilled = step <= activeStep
-            Box(
-                modifier = GlanceModifier
-                    .defaultWeight()
-                    .fillMaxHeight()
-                    .padding(horizontal = (gapDp / 2).dp)
-                    .background(
-                        ColorProvider(
-                            if (isFilled) Color(0xFFFFFFFF) else Color(0xFF444444)
+        Row(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .fillMaxHeight(),
+            horizontalAlignment = Alignment.Horizontal.Start
+        ) {
+            for (step in 1..steps) {
+                val isFilled = step <= activeStep
+
+                // 1dp divider before every segment except the first
+                if (step > 1) {
+                    Box(
+                        modifier = GlanceModifier
+                            .width(dividerDp.dp)
+                            .fillMaxHeight()
+                            .background(ColorProvider(colorUnfilled))
+                    ) {}
+                }
+
+                // Segment — no individual corner radius, no padding
+                Box(
+                    modifier = GlanceModifier
+                        .defaultWeight()
+                        .fillMaxHeight()
+                        .background(
+                            ColorProvider(if (isFilled) colorFilled else colorUnfilled)
                         )
-                    )
-                    .cornerRadius(4.dp)
-                    .clickable(
-                        actionRunCallback<SetBrightnessAction>(
-                            actionParametersOf(brightnessStepKey to step)
+                        .clickable(
+                            actionRunCallback<SetBrightnessAction>(
+                                actionParametersOf(brightnessStepKey to step)
+                            )
                         )
-                    )
-            ) {}
+                ) {}
+            }
         }
     }
 }

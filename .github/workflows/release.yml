@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'   # triggers on tags like v1.0.0, v1.1.0, etc.
 
+permissions:
+  contents: write   # needed to create GitHub Releases and upload assets
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,11 +22,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Gradle cache
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build release APK
         run: ./gradlew assembleRelease
+
+      - name: List release APKs
+        run: ls -la app/build/outputs/apk/release/
 
       - name: Sign APK
         uses: r0adkll/sign-android-release@v1
@@ -37,9 +43,14 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
 
+      - name: Rename signed APK
+        run: |
+          mv "${{ steps.sign_app.outputs.signedReleaseFile }}" \
+             app/build/outputs/apk/release/brightness-widget-${{ github.ref_name }}-signed.apk
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "Brightness Widget ${{ github.ref_name }}"
-          files: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          files: app/build/outputs/apk/release/brightness-widget-${{ github.ref_name }}-signed.apk
           generate_release_notes: true

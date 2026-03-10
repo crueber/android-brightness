@@ -98,7 +98,6 @@ Remove and re-add the widget after changing.
 ## Publishing
 
 - **GitHub Releases** — see [RELEASING.md](RELEASING.md)
-- **F-Droid** — see [F-DROID.md](F-DROID.md)
 
 ## License
 

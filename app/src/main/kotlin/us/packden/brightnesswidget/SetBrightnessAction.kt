@@ -9,7 +9,6 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import androidx.glance.state.PreferencesGlanceStateDefinition
-import kotlin.math.roundToInt
 
 val brightnessStepKey = ActionParameters.Key<Int>("brightness_step")
 
@@ -21,12 +20,10 @@ class SetBrightnessAction : ActionCallback {
     ) {
         val step = parameters[brightnessStepKey] ?: return
         val steps = BrightnessConfig.BRIGHTNESS_STEPS
+        val range = getBrightnessRange(context)
 
-        // Map step (1..steps) evenly across the full brightness range (1..255).
-        // Formula: (step-1) / (steps-1) spans 0.0–1.0 across the full range,
-        // so step 1 = minimum and step N = maximum.
-        // Floor at 1 (not 0) to avoid a completely black screen.
-        val brightnessValue = ((step - 1).toFloat() / (steps - 1) * 255).roundToInt().coerceIn(1, 255)
+        // Map the tapped step to the device's actual brightness range
+        val brightnessValue = stepToRawBrightness(step, steps, range)
 
         // Disable auto-brightness so the manual value sticks
         Settings.System.putInt(
@@ -42,15 +39,15 @@ class SetBrightnessAction : ActionCallback {
             brightnessValue
         )
 
-        // Write the new value into Glance state so the widget re-renders
-        // immediately with the correct filled/unfilled segments
+        // Store both the raw value and the exact step that was tapped.
+        // Storing the step directly avoids any rounding error on the display side.
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
             prefs.toMutablePreferences().apply {
                 this[intPreferencesKey("brightness_value")] = brightnessValue
+                this[intPreferencesKey("brightness_active_step")] = step
             }
         }
 
-        // Trigger a re-render of all widget instances
         BrightnessWidget().updateAll(context)
     }
 }

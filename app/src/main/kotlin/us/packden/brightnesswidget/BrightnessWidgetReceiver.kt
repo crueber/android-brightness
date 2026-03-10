@@ -86,9 +86,14 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
     /**
      * Read the current system brightness and push it into Glance state for
      * every widget instance, then trigger a re-render.
+     * Converts the raw value to the nearest step using the device's actual
+     * range so the bar always reflects the correct number of filled segments.
      */
     private fun syncBrightnessState(context: Context) {
+        val range = getBrightnessRange(context)
         val newBrightness = readSystemBrightness(context)
+        val steps = BrightnessConfig.BRIGHTNESS_STEPS
+        val activeStep = rawBrightnessToStep(newBrightness, steps, range)
         coroutineScope.launch {
             val glanceIds = GlanceAppWidgetManager(context)
                 .getGlanceIds(BrightnessWidget::class.java)
@@ -96,6 +101,7 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
                 updateAppWidgetState(context, PreferencesGlanceStateDefinition, id) { prefs ->
                     prefs.toMutablePreferences().apply {
                         this[intPreferencesKey("brightness_value")] = newBrightness
+                        this[intPreferencesKey("brightness_active_step")] = activeStep
                     }
                 }
             }

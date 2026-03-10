@@ -23,7 +23,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        run: mkdir -p "${{ github.workspace }}/tmp" && ./gradlew assembleRelease --stacktrace
 
       - name: List release APKs
         run: ls -la app/build/outputs/apk/release/

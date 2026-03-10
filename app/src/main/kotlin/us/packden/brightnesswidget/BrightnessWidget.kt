@@ -255,6 +255,7 @@ fun BrightnessBar() {
                         Text(
                             text = "100%",
                             maxLines = 1,
+                            modifier = GlanceModifier.padding(end = 3.dp),
                             style = TextStyle(
                                 color = ColorProvider(
                                     if (isFilled) labelOnFilled else labelOnUnfilled

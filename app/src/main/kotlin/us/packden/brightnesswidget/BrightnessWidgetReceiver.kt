@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -61,20 +60,14 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
             }
         }
 
-        val cr = context.contentResolver
-
-        // Observe the float setting on API 26+ (authoritative on modern devices)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            cr.registerContentObserver(
-                Settings.System.getUriFor("screen_brightness_float"),
-                false, observer
-            )
-        }
-
-        // Always observe the legacy integer setting too (older devices + fallback)
-        cr.registerContentObserver(
+        // Observe the integer SCREEN_BRIGHTNESS setting — this is the one
+        // setting that is reliably updated on every Android version (API 26–36+)
+        // when the user changes brightness via the pull-down slider, Settings
+        // app, or any other mechanism.
+        context.contentResolver.registerContentObserver(
             Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS),
-            false, observer
+            false,
+            observer
         )
 
         brightnessObserver = observer
@@ -87,17 +80,20 @@ class BrightnessWidgetReceiver : GlanceAppWidgetReceiver() {
         }
     }
 
+    /**
+     * Read the current system brightness and push the corresponding step
+     * into Glance state for every widget instance, then trigger a re-render.
+     */
     private fun syncBrightnessState(context: Context) {
-        val fraction  = readBrightnessFraction(context)
-        val steps     = BrightnessConfig.BRIGHTNESS_STEPS
-        val activeStep = fractionToStep(fraction, steps)
+        val current    = readSystemBrightness(context)
+        val steps      = BrightnessConfig.BRIGHTNESS_STEPS
+        val activeStep = brightnessToStep(current, steps)
         coroutineScope.launch {
             val glanceIds = GlanceAppWidgetManager(context)
                 .getGlanceIds(BrightnessWidget::class.java)
             for (id in glanceIds) {
                 updateAppWidgetState(context, PreferencesGlanceStateDefinition, id) { prefs ->
                     prefs.toMutablePreferences().apply {
-                        this[brightnessFractionKey]   = fraction
                         this[brightnessActiveStepKey] = activeStep
                     }
                 }

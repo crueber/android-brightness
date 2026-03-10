@@ -19,15 +19,13 @@ class SetBrightnessAction : ActionCallback {
         val step  = parameters[brightnessStepKey] ?: return
         val steps = BrightnessConfig.BRIGHTNESS_STEPS
 
-        // Convert the tapped step to a 0.0–1.0 fraction and write to system
-        val fraction = stepToFraction(step, steps)
-        writeBrightnessFraction(context, fraction)
+        // Convert step to integer brightness and write to system
+        val brightness = stepToBrightness(step, steps)
+        writeSystemBrightness(context, brightness)
 
-        // Store fraction and exact tapped step in Glance state.
-        // Storing the step directly avoids any rounding error on re-render.
+        // Store the exact tapped step in Glance state for immediate re-render
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
             prefs.toMutablePreferences().apply {
-                this[brightnessFractionKey]   = fraction
                 this[brightnessActiveStepKey] = step
             }
         }

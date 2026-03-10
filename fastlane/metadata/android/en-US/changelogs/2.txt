@@ -1,0 +1,1 @@
+Default widget size increased to 4 columns wide.

@@ -1,0 +1,1 @@
+Add small right padding to 100% label.

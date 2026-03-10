@@ -1,0 +1,22 @@
+A minimal home screen widget for controlling screen brightness. No bloat, no ads, no tracking — just a clean horizontal bar you tap to set brightness.
+
+<b>Features:</b>
+
+* 10-segment tap-zone bar — tap any segment to instantly set brightness
+* Gamma-corrected mapping that matches the Quick Settings slider
+* Auto-brightness is disabled automatically when you tap
+* Subtle brightness icon and percentage labels (50%, 100%) for clarity
+* Resizable horizontally to any width
+* Works on Android 8.0+ (API 26+), tested on Pixel 5 through Pixel 10
+
+<b>How it works:</b>
+
+Add the widget to your home screen from the widget picker. Tap anywhere on the bar to set brightness to that level. The leftmost segment is the dimmest, the rightmost is full brightness. The bar fills to show the current level.
+
+<b>One-time setup:</b>
+
+The app needs the "Modify System Settings" permission to change brightness. Open the app once, tap the button to go to Settings, and enable the toggle. That's it — you never need to open the app again.
+
+<b>Privacy:</b>
+
+No internet permission. No data collection. No analytics. Fully open source under the MIT license.

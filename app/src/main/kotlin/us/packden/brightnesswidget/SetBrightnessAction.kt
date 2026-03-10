@@ -9,6 +9,7 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import androidx.glance.state.PreferencesGlanceStateDefinition
+import kotlin.math.roundToInt
 
 val brightnessStepKey = ActionParameters.Key<Int>("brightness_step")
 
@@ -21,9 +22,11 @@ class SetBrightnessAction : ActionCallback {
         val step = parameters[brightnessStepKey] ?: return
         val steps = BrightnessConfig.BRIGHTNESS_STEPS
 
-        // Convert step (1..steps) to Android brightness value (1..255)
-        // Use 1 as minimum (not 0) to avoid a completely black screen
-        val brightnessValue = ((step.toFloat() / steps) * 255).toInt().coerceIn(1, 255)
+        // Map step (1..steps) evenly across the full brightness range (1..255).
+        // Formula: (step-1) / (steps-1) spans 0.0–1.0 across the full range,
+        // so step 1 = minimum and step N = maximum.
+        // Floor at 1 (not 0) to avoid a completely black screen.
+        val brightnessValue = ((step - 1).toFloat() / (steps - 1) * 255).roundToInt().coerceIn(1, 255)
 
         // Disable auto-brightness so the manual value sticks
         Settings.System.putInt(

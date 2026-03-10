@@ -80,9 +80,10 @@ fun BrightnessBar() {
     val prefs = currentState<Preferences>()
     val rawBrightness = prefs[brightnessValueKey] ?: 128
 
-    // Which step is currently active (1..steps)?
-    // Use roundToInt so that e.g. step 7/10 → value 178 → reads back as step 7
-    val activeStep = ((rawBrightness / 255f) * steps).roundToInt().coerceIn(0, steps)
+    // Map brightness value (0–255) back to the active step (1..steps).
+    // Inverse of: value = (step-1)/(steps-1) * 255
+    // So:         step  = (value/255) * (steps-1) + 1
+    val activeStep = ((rawBrightness / 255f) * (steps - 1)).roundToInt() + 1
 
     Row(
         modifier = GlanceModifier

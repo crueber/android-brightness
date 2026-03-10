@@ -239,11 +239,12 @@ fun BrightnessBar() {
                     if (step == mid) {
                         Text(
                             text = "50%",
+                            maxLines = 1,
                             style = TextStyle(
                                 color = ColorProvider(
                                     if (isFilled) labelOnFilled else labelOnUnfilled
                                 ),
-                                fontSize = 10.sp,
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Medium,
                                 textAlign = TextAlign.Center
                             )
@@ -253,12 +254,12 @@ fun BrightnessBar() {
                     if (step == steps) {
                         Text(
                             text = "100%",
-                            modifier = GlanceModifier.padding(end = 6.dp),
+                            maxLines = 1,
                             style = TextStyle(
                                 color = ColorProvider(
                                     if (isFilled) labelOnFilled else labelOnUnfilled
                                 ),
-                                fontSize = 10.sp,
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Medium,
                                 textAlign = TextAlign.End
                             )

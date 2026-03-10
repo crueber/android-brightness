@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Brightness Widget</string>
+    <string name="widget_description">Tap to set screen brightness</string>
+    <string name="permission_title">One Permission Needed</string>
+    <string name="permission_explanation">Brightness Widget needs permission to modify system settings in order to control your screen brightness.\n\nTap the button below, find \"Brightness Widget\" in the list, and enable the toggle.</string>
+    <string name="permission_granted">Permission granted. You can now add the widget to your home screen.</string>
+    <string name="open_settings_button">Open Settings to Grant Permission</string>
+    <string name="permission_granted_label">Permission Granted</string>
+</resources>

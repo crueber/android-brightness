@@ -1,0 +1,12 @@
+# Android keystore — never commit
+*.jks
+*.keystore
+
+# Standard Android ignores
+.gradle/
+local.properties
+app/build/
+build/
+tmp/
+*.iml
+.idea/

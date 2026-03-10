@@ -28,7 +28,7 @@ import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
-import androidx.glance.layout.width
+import androidx.glance.layout.padding
 import androidx.glance.state.GlanceStateDefinition
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.unit.ColorProvider
@@ -87,8 +87,10 @@ fun readBrightnessFraction(context: Context): Float {
 /**
  * Write a brightness fraction 0.0–1.0 to the system.
  *
- * Writes SCREEN_BRIGHTNESS_FLOAT on API 26+ (what modern devices actually use)
- * and also writes the legacy integer for compatibility.
+ * On API 26–35, tries SCREEN_BRIGHTNESS_FLOAT first (authoritative on those
+ * versions). On API 36+, that key moved to the secure namespace and can no
+ * longer be written by third-party apps — so we fall back to the integer
+ * setting, which still works via WRITE_SETTINGS on all API levels.
  */
 fun writeBrightnessFraction(context: Context, fraction: Float) {
     val cr = context.contentResolver
@@ -98,12 +100,16 @@ fun writeBrightnessFraction(context: Context, fraction: Float) {
     Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE,
         Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
 
-    // Write float setting on API 26+
+    // Try the float setting (works on API 26–35; throws on API 36+ where it
+    // moved to secure settings — catch and ignore, fall through to integer)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        Settings.System.putFloat(cr, "screen_brightness_float", clamped)
+        try {
+            Settings.System.putFloat(cr, "screen_brightness_float", clamped)
+        } catch (_: IllegalArgumentException) { }
     }
 
-    // Always write the legacy integer too (needed on older devices, harmless on new ones)
+    // Always write the legacy integer (needed on older devices; on modern
+    // devices the system keeps it in sync with the float value)
     val intValue = (clamped * 255).roundToInt().coerceIn(1, 255)
     Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, intValue)
 }
@@ -171,18 +177,16 @@ fun BrightnessBar() {
             horizontalAlignment = Alignment.Horizontal.Start
         ) {
             for (step in 1..steps) {
-                if (step > 1) {
-                    Box(
-                        modifier = GlanceModifier
-                            .width(dividerDp.dp)
-                            .fillMaxHeight()
-                            .background(ColorProvider(colorUnfilled))
-                    ) {}
-                }
+                // 1dp left padding on every segment except the first.
+                // The outer Box's dark background shows through the gap,
+                // creating a hairline divider without adding extra children
+                // (RemoteViews LinearLayout is capped at 10 children).
+                val leftPad = if (step > 1) dividerDp.dp else 0.dp
                 Box(
                     modifier = GlanceModifier
                         .defaultWeight()
                         .fillMaxHeight()
+                        .padding(start = leftPad)
                         .background(ColorProvider(
                             if (step <= activeStep) colorFilled else colorUnfilled
                         ))

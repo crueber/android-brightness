@@ -22,9 +22,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace
 
